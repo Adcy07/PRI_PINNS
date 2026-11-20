@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 import torch.utils.data as thdat
-from package.physical_problem import physics_loss_function,loss_regularisation_function
+
 
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -18,32 +18,33 @@ class Pinns(nn.Module): #un réseau hérite toujours de nn.Module
         input_dim, #nombre de variables d'entrée
         output_dim,#nombre de variables de sortie 
         n_hidden_layers, 
-        loss_differential_equation,#loss de l'équation diff aux points de collocation, fonction qu'on doit donner à la création du réseau
-        loss_differential_equation_wheight, #importance apportée à la loss issue de l'équation différentielle  
+        loss_residual_DE,#loss de l'équation diff aux points de collocation, fonction qu'on doit donner à la création du réseau
+        loss_residual_DE_weight, #importance apportée à la loss issue de l'équation différentielle  
         loss_regularisation, #loss de regularisation, fonction qu'on doit donner à la création du réseau
-        loss_regularisation_wheight, #importance apportée à la loss issue de la régularization 
-        loss_boundary = nn.MSELoss(), #loss sur les conditions aux limites
-        n_units=100, #nombre de noeuds dans les hiddens layers 
-        epochs=300, #nombre de passage sur toutes les points de colocation
-        lr=1e-3,#taux d'apprentisage, paramètre de la descente de gradient 
-       
+        loss_regularisation_weight, #importance apportée à la loss issue de la régularization 
+        n_nodes_per_layer, #nombre de noeuds dans les hiddens layers 
+        epochs, #nombre de passage sur toutes les points de colocation
+        lr,#taux d'apprentisage, paramètre de la descente de gradient 
+        loss_boundary_weight, #weight for the boudary loss
+        loss_boundary = nn.MSELoss() #loss sur les conditions aux limites    
     ) -> None:
+        
         super().__init__()
 
         self.epochs = epochs
         self.loss_boundary = loss_boundary
-        self.loss_function_differential_equation = loss_differential_equation 
-        self.loss_regularisation_wheight = loss_regularisation_wheight
-        self.loss_differential_equation_wheight = loss_differential_equation_wheight
+        self.loss_residual_DE = loss_residual_DE 
+        self.loss_regularisation_weight = loss_regularisation_weight
+        self.loss_residual_DE_weight = loss_residual_DE_weight
+        self.loss_boundary_weight = loss_boundary_weight
         self.loss_regularisation = loss_regularisation 
         self.lr = lr 
-        self.n_units = n_units
+        self.n_units = n_nodes_per_layer
 
-        layers = [nn.Linear(input_dim, self.n_units), nn.ReLU()] #creation du premier layer
+        layers = [nn.Linear(input_dim, self.n_units), nn.Tanh()] #creation du premier layer
 
         for _ in range(n_hidden_layers - 1):
-            layers += [nn.Linear(self.n_units, self.n_units), nn.ReLU()]
-        layers += [nn.Linear(self.n_units, self.n_units), nn.ReLU()]
+            layers += [nn.Linear(self.n_units, self.n_units), nn.Tanh()]
         self.layers = nn.Sequential(*layers) 
 
         self.out = nn.Linear(self.n_units, output_dim) #sépare le layer de sortie, il aurait pu être dans le layers
@@ -58,7 +59,7 @@ class Pinns(nn.Module): #un réseau hérite toujours de nn.Module
 
         return out #retourne juste une inférence
 
-    def fit(self,bourdary_conditions):
+    def fit(self,bourdary_conditions,collocation):
 
         coordinates, conditions = bourdary_conditions
 
@@ -71,9 +72,9 @@ class Pinns(nn.Module): #un réseau hérite toujours de nn.Module
         for ep in range(self.epochs): #on fait autant de passage que d'epoch
             optimiser.zero_grad() #on remet le gradient à 0 à chaque epoch (d'habittude c'est à chaque batch au sein d'une epoch mais la on fait pas de batch on a pas de data)
             prediction_boudaries = self.forward(coordinates)
-            loss = self.loss_boundary(prediction_boudaries,conditions)
-            loss += self.loss_differential_equation_wheight * self.loss_function_differential_equation(self)  #on ajoute les contribution des loss equa diff et weight, définies en tant que fonction indépendantes
-            loss +=  self.loss_regularisation_wheight * self.loss_regularisation(self)
+            loss = self.loss_boundary(prediction_boudaries,conditions)*self.loss_boundary_weight
+            loss += self.loss_residual_DE_weight * self.loss_residual_DE(self,collocation)  #on ajoute les contribution des loss equa diff et weight, définies en tant que fonction indépendantes
+            loss +=  self.loss_regularisation_weight * self.loss_regularisation(self)
 
             loss.backward()  # backward (gradients), les gradients sont stocké dans les layers du modèle
             optimiser.step() #on fait un pas de descente de gradient avec l'optimiser 
