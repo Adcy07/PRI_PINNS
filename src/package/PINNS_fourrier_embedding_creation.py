@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 import torch.utils.data as thdat
-
+import math
 
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -27,6 +27,7 @@ class Pinns(nn.Module): #un réseau hérite toujours de nn.Module
         lr,#taux d'apprentisage, paramètre de la descente de gradient 
         loss_boundary_weight, #weight for the boudary loss
         number_of_frequency,#number of frequency we choose for the fourrier embedding
+        matrix_B,
         loss_boundary = nn.MSELoss() #loss sur les conditions aux limites    
     ) -> None:
         
@@ -41,6 +42,7 @@ class Pinns(nn.Module): #un réseau hérite toujours de nn.Module
         self.loss_regularisation = loss_regularisation 
         self.lr = lr 
         self.n_units = n_nodes_per_layer
+        self.matrix_B = matrix_B
 
         layers = [nn.Linear(input_dim, self.n_units), nn.Tanh()] #creation du premier layer
 
@@ -54,9 +56,10 @@ class Pinns(nn.Module): #un réseau hérite toujours de nn.Module
 
 
     def forward(self, x):
-        h = self.layers(x)
+        proj = 2 * math.pi * x * self.matrix_B         # (N, m) broadcast par B
+        feats = torch.cat([torch.cos(proj), torch.sin(proj)], dim=-1)  # (N, 2m)
+        h = self.layers(feats)
         out = self.out(h)
-        
 
         return out #retourne juste une inférence
 
