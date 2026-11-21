@@ -1,4 +1,5 @@
-from package.PINNS_creation import Pinns 
+from package.PINNS_creation import Pinns
+from package.PINNS_fourrier_embedding_creation import Pinns_Fourier
 import functools
 import matplotlib.pyplot as plt
 import numpy as np
@@ -20,8 +21,8 @@ loss_boundary_weight = 1
 n_nodes_per_layer = 126
 
 #TRAINING PARAMETERS
-epochs = 2000
-lr = 3e-3
+epochs = 500
+lr = 5e-3
 
 #LOSS FUNCTIONS
 
@@ -47,7 +48,6 @@ def grad(outputs, inputs):
 
 def physics_loss_function_cooling_1D(model: torch.nn.Module,time): #on défini la loss physique liée à léquation diff
     Tenv = 25
-    T0 = 100
     R = 0.005
     T = model(time)
     dT_dt = grad(T, time)[0] #on calcule le gradient de temperature par rapport au temps, le dT/dt dans l'équation
@@ -71,6 +71,22 @@ pinn = Pinns(input_dim=1,output_dim=1,
                           epochs=epochs,
                           lr= lr
                           )
+
+# #NETWORK CREATION
+# pinn = Pinns_Fourier(input_dim=1,output_dim=1,
+#                           n_hidden_layers=n_hidden_layers,
+#                           loss_residual_DE=loss_residual,
+#                           loss_regularisation= loss_regularisation,
+#                           loss_regularisation_weight=loss_regularisation_wheight,
+#                           loss_residual_DE_weight=loss_differential_equation_wheight,
+#                           loss_boundary_weight= loss_boundary_weight,
+#                           n_nodes_per_layer=n_nodes_per_layer,
+#                           epochs=epochs,
+#                           lr= lr,
+#                           sigma_fourier=0.0003,
+#                           number_fourier_frequency=5
+#                           )
+
 
 
 
@@ -125,4 +141,3 @@ plt.xlabel('Time (s)')
 plt.savefig("OUTPUT")
 
 
-#FOURRIER EMBEDDING 

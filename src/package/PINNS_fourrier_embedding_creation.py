@@ -12,7 +12,7 @@ def np_to_th(x): #pour convertir tableau numpy en tenseur torch
     return torch.from_numpy(x).to(torch.float).to(DEVICE).reshape(n_samples, -1)
 
 
-class Pinns(nn.Module): #un réseau hérite toujours de nn.Module
+class Pinns_Fourier(nn.Module): #un réseau hérite toujours de nn.Module
     def __init__( #initialisation du réseau
         self,
         input_dim, #nombre de variables d'entrée
@@ -26,8 +26,8 @@ class Pinns(nn.Module): #un réseau hérite toujours de nn.Module
         epochs, #nombre de passage sur toutes les points de colocation
         lr,#taux d'apprentisage, paramètre de la descente de gradient 
         loss_boundary_weight, #weight for the boudary loss
-        number_of_frequency,#number of frequency we choose for the fourrier embedding
-        matrix_B,
+        sigma_fourier, 
+        number_fourier_frequency,
         loss_boundary = nn.MSELoss() #loss sur les conditions aux limites    
     ) -> None:
         
@@ -42,9 +42,12 @@ class Pinns(nn.Module): #un réseau hérite toujours de nn.Module
         self.loss_regularisation = loss_regularisation 
         self.lr = lr 
         self.n_units = n_nodes_per_layer
-        self.matrix_B = matrix_B
+        self.sigma_fourier = sigma_fourier
+        self.number_fourier_frequency  = number_fourier_frequency
 
-        layers = [nn.Linear(input_dim, self.n_units), nn.Tanh()] #creation du premier layer
+        new_dimension = 2 * input_dim * self.number_fourier_frequency
+       
+        layers = [nn.Linear(new_dimension, self.n_units), nn.Tanh()] #creation du premier layer
 
         for _ in range(n_hidden_layers - 1):
             layers += [nn.Linear(self.n_units, self.n_units), nn.Tanh()]
@@ -52,13 +55,18 @@ class Pinns(nn.Module): #un réseau hérite toujours de nn.Module
 
         self.out = nn.Linear(self.n_units, output_dim) #sépare le layer de sortie, il aurait pu être dans le layers
 
+        for layer in self.modules(): #Initialise les poids avec la méthode glorot
+            if isinstance(layer, nn.Linear):
+                nn.init.xavier_normal_(layer.weight, gain=1)
+                nn.init.zeros_(layer.bias)
+
         self.to(DEVICE)
-
-
+  
     def forward(self, x):
-        proj = 2 * math.pi * x * self.matrix_B         # (N, m) broadcast par B
-        feats = torch.cat([torch.cos(proj), torch.sin(proj)], dim=-1)  # (N, 2m)
-        h = self.layers(feats)
+        self.tensor_B = torch.normal(0, self.sigma_fourier, size=(1,self.number_fourier_frequency))
+        proj = 2 * math.pi * x * self.tensor_B         # (N, m) broadcast par B
+        fourier_features = torch.cat([torch.cos(proj), torch.sin(proj)], dim=-1)  # (N, 2m)
+        h = self.layers(fourier_features)
         out = self.out(h)
 
         return out #retourne juste une inférence
@@ -66,9 +74,11 @@ class Pinns(nn.Module): #un réseau hérite toujours de nn.Module
     def fit(self,bourdary_conditions,collocation):
 
         coordinates, conditions = bourdary_conditions
-
         coordinates = np_to_th(coordinates)
         conditions = np_to_th(conditions)
+
+        # proj_coordinates = 2 * math.pi * coordinates * self.tensor_B  #on transforme les condition initiales en condition initiales fourier embeded
+        # coordinates_fourier_features = torch.cat([torch.cos(proj_coordinates), torch.sin(proj_coordinates)], dim=-1)  # (N, 2m)
 
         optimiser = optim.Adam(self.parameters(), lr=self.lr) #on initialise une instance de l'optimiseur
         self.train() #met le model en "mode train", active des options importantes
@@ -91,6 +101,7 @@ class Pinns(nn.Module): #un réseau hérite toujours de nn.Module
     def predict(self, X):
         print("inférence en cours")
         self.eval() #met le model en mode évalutation, desacvite les trucs superflus
+
         out = self.forward(np_to_th(X))
         return out.detach().cpu().numpy() #renvoi les prédiciton du model, comme model(X) mais là renvoi que ce qu'on veut 
 

@@ -40,6 +40,8 @@ class Pinns(nn.Module): #un réseau hérite toujours de nn.Module
         self.loss_regularisation = loss_regularisation 
         self.lr = lr 
         self.n_units = n_nodes_per_layer
+        
+
 
         layers = [nn.Linear(input_dim, self.n_units), nn.Tanh()] #creation du premier layer
 
@@ -48,6 +50,12 @@ class Pinns(nn.Module): #un réseau hérite toujours de nn.Module
         self.layers = nn.Sequential(*layers) 
 
         self.out = nn.Linear(self.n_units, output_dim) #sépare le layer de sortie, il aurait pu être dans le layers
+
+        for layer in self.modules(): #Initialise les poids avec la méthode glorot
+                    if isinstance(layer, nn.Linear):
+                        nn.init.xavier_normal_(layer.weight, gain=1)
+                        nn.init.zeros_(layer.bias)
+        
 
         self.to(DEVICE)
 
