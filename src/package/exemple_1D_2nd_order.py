@@ -1,4 +1,4 @@
-from package.PINNS_creation import Pinns
+from package.PINNS_creation import Pinns,np_to_th
 from package.PINNS_fourrier_embedding_creation import Pinns_Fourier
 import functools
 import matplotlib.pyplot as plt
@@ -55,9 +55,36 @@ def physics_loss_function(model: torch.nn.Module,x): #on défini la loss physiqu
     
     return torch.mean(pde**2) 
 
+def boundary_condition_loss_function(model: torch.nn.Module, boundary_conditions, boundary_conditions_first_derivative):
+    # Conditions sur y
+    x_bc, y_bc = boundary_conditions
+    x_bc = torch.as_tensor(x_bc, dtype=torch.float32, device=DEVICE).reshape(-1, 1)
+    y_bc = torch.as_tensor(y_bc, dtype=torch.float32, device=DEVICE).reshape(-1, 1)
+
+    # Conditions sur y'
+    x_d, dy_bc = boundary_conditions_first_derivative
+    x_d = torch.as_tensor(x_d, dtype=torch.float32, device=DEVICE).reshape(-1, 1)
+    dy_bc = torch.as_tensor(dy_bc, dtype=torch.float32, device=DEVICE).reshape(-1, 1)
+    x_d = x_d.clone().requires_grad_(True)   # AVANT le forward
+
+    loss_y = torch.mean((model(x_bc) - y_bc) ** 2)
+
+    y_d = model(x_d)
+    dy_dx = torch.autograd.grad(
+        y_d, x_d,
+        grad_outputs=torch.ones_like(y_d),
+        create_graph=True                     # indispensable pour l'entraînement
+    )[0]
+    loss_dy = torch.mean((dy_dx - dy_bc) ** 2)
+
+    return loss_y + loss_dy
+
+
+
 
 loss_residual = physics_loss_function
 loss_regularisation = loss_regularisation_function 
+loss_boundary = boundary_condition_loss_function
 
 #NETWORK CREATION
 pinn = Pinns(input_dim=1,output_dim=1,
@@ -69,7 +96,8 @@ pinn = Pinns(input_dim=1,output_dim=1,
                           loss_boundary_weight= loss_boundary_weight,
                           n_nodes_per_layer=n_nodes_per_layer,
                           epochs=epochs,
-                          lr= lr
+                          lr= lr,
+                          loss_boundary = loss_boundary
                           )
 
 # #NETWORK CREATION
@@ -110,12 +138,18 @@ x_init = np.array([1-C1,0])
 y_init = np.array([C2,np.log(C1)+C2])
 boundary_conditions = x_init,y_init
 
+x_init_deriv = np.array([0])
+y_init_deriv = np.array([1/C1])
+boundary_conditions_derivatives = x_init_deriv,y_init_deriv
+
 #COLLOCATION POINTS
 n_collocation_points = 10000
 x_collocation = torch.linspace(0, 10, steps=n_collocation_points,).view(-1,1).requires_grad_(True).to(DEVICE)
 
 #TRAINING AND COMPUTING THE LOSS
-losses = pinn.fit(boundary_conditions,x_collocation) 
+losses = pinn.fit(boundary_conditions,
+                  boundary_conditions_derivatives,
+                  x_collocation) 
 
 #INFERENCE 
 y_pred = pinn.predict(x)
