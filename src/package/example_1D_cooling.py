@@ -167,5 +167,5 @@ plt.plot(times, t_pred,label = "Network prediction ")
 plt.legend()
 plt.ylabel('Tempereature (C°)')
 plt.xlabel('Time (s)')
-file_name = f"OUTPUT_{str(activation)}_{n_hidden_layers}hidden_{n_hidden_layers}n_nodes_per_layer_{loss_regularisation_weight}regu_{loss_differential_equation_wheight}residual_{loss_boundary_weight}boudary_{epochs}epoch_{lr}lr_{n_collocation_points}collocation.png"
+file_name = f"OUTPUT_Reynolds_{str(activation)}_{n_hidden_layers}hidden_{n_hidden_layers}n_nodes_per_layer_{loss_regularisation_weight}regu_{loss_differential_equation_wheight}residual_{loss_boundary_weight}boudary_{epochs}epoch_{lr}lr_{n_collocation_points}collocation.png"
 plt.savefig(file_name)

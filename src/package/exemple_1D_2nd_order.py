@@ -15,15 +15,15 @@ DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 dossier = Path("outputs/graphs")
 
 #HYPERPARAMETERS
-n_hidden_layers = 4
+n_hidden_layers = 3
 loss_regularisation_wheight = 0.05
 loss_differential_equation_wheight = 1
-loss_boundary_weight = 100
-n_nodes_per_layer = 200
-
+loss_boundary_weight = 10
+n_nodes_per_layer = 100
+activation = nn.ReLU()
 #TRAINING PARAMETERS
 epochs = 300
-lr = 1e-4
+lr = 1e-3
 
 #LOSS FUNCTIONS
 
@@ -58,26 +58,28 @@ def physics_loss_function(model: torch.nn.Module,x): #on défini la loss physiqu
 def boundary_condition_loss_function(model: torch.nn.Module, boundary_conditions, boundary_conditions_first_derivative):
     # Conditions sur y
     x_bc, y_bc = boundary_conditions
+
     x_bc = torch.as_tensor(x_bc, dtype=torch.float32, device=DEVICE).reshape(-1, 1)
     y_bc = torch.as_tensor(y_bc, dtype=torch.float32, device=DEVICE).reshape(-1, 1)
 
+    loss_y = torch.mean((model(x_bc) - y_bc) ** 2)
+  
     # Conditions sur y'
     x_d, dy_bc = boundary_conditions_first_derivative
-    x_d = torch.as_tensor(x_d, dtype=torch.float32, device=DEVICE).reshape(-1, 1)
-    dy_bc = torch.as_tensor(dy_bc, dtype=torch.float32, device=DEVICE).reshape(-1, 1)
-    x_d = x_d.clone().requires_grad_(True)   # AVANT le forward
 
-    loss_y = torch.mean((model(x_bc) - y_bc) ** 2)
-
-    y_d = model(x_d)
-    dy_dx = torch.autograd.grad(
-        y_d, x_d,
+    if len(x_d)>0: #cette ligne se fait uniquement si on a une condition sur la dérivée seconde
+        x_d = torch.as_tensor(x_d, dtype=torch.float32, device=DEVICE).reshape(-1, 1).requires_grad_(True)
+        dy_bc = torch.as_tensor(dy_bc, dtype=torch.float32, device=DEVICE).reshape(-1, 1)
+        y_d = model(x_d)
+        dy_dx = torch.autograd.grad(y_d, x_d,
         grad_outputs=torch.ones_like(y_d),
-        create_graph=True                     # indispensable pour l'entraînement
-    )[0]
-    loss_dy = torch.mean((dy_dx - dy_bc) ** 2)
+        create_graph=True            )[0]
+        loss_dy = torch.mean((dy_dx - dy_bc) ** 2)
 
-    return loss_y + loss_dy
+        return loss_dy + loss_y
+
+    return loss_y
+
 
 
 
@@ -97,7 +99,8 @@ pinn = Pinns(input_dim=1,output_dim=1,
                           n_nodes_per_layer=n_nodes_per_layer,
                           epochs=epochs,
                           lr= lr,
-                          loss_boundary = loss_boundary
+                          loss_boundary = loss_boundary,
+                          activation_hidden_layer=activation
                           )
 
 # #NETWORK CREATION

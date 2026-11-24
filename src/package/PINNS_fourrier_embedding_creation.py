@@ -17,18 +17,19 @@ class Pinns_Fourier(nn.Module): #un réseau hérite toujours de nn.Module
         self,
         input_dim, #nombre de variables d'entrée
         output_dim,#nombre de variables de sortie 
+        n_nodes_per_layer,
         n_hidden_layers, 
+        activation_hidden_layer,
         loss_residual_DE,#loss de l'équation diff aux points de collocation, fonction qu'on doit donner à la création du réseau
         loss_residual_DE_weight, #importance apportée à la loss issue de l'équation différentielle  
         loss_regularisation, #loss de regularisation, fonction qu'on doit donner à la création du réseau
-        loss_regularisation_weight, #importance apportée à la loss issue de la régularization 
-        n_nodes_per_layer, #nombre de noeuds dans les hiddens layers 
+        loss_regularisation_weight, #importance apportée à la loss issue de la régularization
         epochs, #nombre de passage sur toutes les points de colocation
         lr,#taux d'apprentisage, paramètre de la descente de gradient 
         loss_boundary_weight, #weight for the boudary loss
         sigma_fourier, 
         number_fourier_frequency,
-        loss_boundary = nn.MSELoss() #loss sur les conditions aux limites    
+        loss_boundary #loss sur les conditions aux limites    
     ) -> None:
         
         super().__init__()
@@ -41,19 +42,18 @@ class Pinns_Fourier(nn.Module): #un réseau hérite toujours de nn.Module
         self.loss_boundary_weight = loss_boundary_weight
         self.loss_regularisation = loss_regularisation 
         self.lr = lr 
-        self.n_units = n_nodes_per_layer
         self.sigma_fourier = sigma_fourier
         self.number_fourier_frequency  = number_fourier_frequency
 
         new_dimension = 2 * input_dim * self.number_fourier_frequency
        
-        layers = [nn.Linear(new_dimension, self.n_units), nn.Tanh()] #creation du premier layer
+        layers = [nn.Linear(new_dimension, n_nodes_per_layer), activation_hidden_layer] #creation du premier layer
 
         for _ in range(n_hidden_layers - 1):
-            layers += [nn.Linear(self.n_units, self.n_units), nn.Tanh()]
+            layers += [nn.Linear(n_nodes_per_layer, n_nodes_per_layer), activation_hidden_layer]
         self.layers = nn.Sequential(*layers) 
 
-        self.out = nn.Linear(self.n_units, output_dim) #sépare le layer de sortie, il aurait pu être dans le layers
+        self.out = nn.Linear(n_nodes_per_layer, output_dim) #sépare le layer de sortie, il aurait pu être dans le layers
 
         for layer in self.modules(): #Initialise les poids avec la méthode glorot
             if isinstance(layer, nn.Linear):
@@ -71,22 +71,16 @@ class Pinns_Fourier(nn.Module): #un réseau hérite toujours de nn.Module
 
         return out #retourne juste une inférence
 
-    def fit(self,bourdary_conditions,collocation):
+    def fit(self,bourdary_conditions,bourdary_conditions_first_derivative,collocation):
 
-        coordinates, conditions = bourdary_conditions
-        coordinates = np_to_th(coordinates)
-        conditions = np_to_th(conditions)
 
-        # proj_coordinates = 2 * math.pi * coordinates * self.tensor_B  #on transforme les condition initiales en condition initiales fourier embeded
-        # coordinates_fourier_features = torch.cat([torch.cos(proj_coordinates), torch.sin(proj_coordinates)], dim=-1)  # (N, 2m)
 
         optimiser = optim.Adam(self.parameters(), lr=self.lr) #on initialise une instance de l'optimiseur
         self.train() #met le model en "mode train", active des options importantes
         losses = []
         for ep in range(self.epochs): #on fait autant de passage que d'epoch
             optimiser.zero_grad() #on remet le gradient à 0 à chaque epoch (d'habittude c'est à chaque batch au sein d'une epoch mais la on fait pas de batch on a pas de data)
-            prediction_boudaries = self.forward(coordinates)
-            loss = self.loss_boundary(prediction_boudaries,conditions)*self.loss_boundary_weight
+            loss = self.loss_boundary(self,bourdary_conditions,bourdary_conditions_first_derivative)*self.loss_boundary_weight
             loss += self.loss_residual_DE_weight * self.loss_residual_DE(self,collocation)  #on ajoute les contribution des loss equa diff et weight, définies en tant que fonction indépendantes
             loss +=  self.loss_regularisation_weight * self.loss_regularisation(self)
 
