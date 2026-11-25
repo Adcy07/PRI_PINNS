@@ -1,4 +1,5 @@
 from package.PINNS_Reynolds import Pinns_Reynolds
+
 import functools
 import matplotlib.pyplot as plt
 import numpy as np
@@ -14,15 +15,15 @@ dossier = Path("outputs/graphs")
 
 #HYPERPARAMETERS
 n_hidden_layers = 3
-loss_regularisation_weight = 0.05
-loss_differential_equation_wheight = 10
+loss_regularisation_weight = 1
+loss_differential_equation_wheight = 20
 loss_boundary_weight = 100
 loss_P_weight = 200
-n_nodes_per_layer = 100
+n_nodes_per_layer = 150
 activation = nn.Tanh()
 
 #TRAINING PARAMETERS
-epochs = 500
+epochs = 800
 lr = 1e-3
 
 #LOSS FUNCTIONS
@@ -37,7 +38,7 @@ def loss_regularisation_function(model: nn.Module):
 
 
 def H_function(model,X): #the fluid's height (adimensionalised)
-    H0 = 1
+    global H0 
     H = H0 + (X**2)/2
 
     return H
@@ -87,6 +88,9 @@ def boundary_condition_loss_function(model, boundary_conditions, boundary_condit
 
     return loss
 
+#def analytical_solution_1D()
+
+
 loss_residual = physics_loss_function_cooling_1D
 loss_regularisation = loss_regularisation_function 
 loss_boundary = boundary_condition_loss_function
@@ -115,8 +119,9 @@ pinn = Pinns_Reynolds(input_dim=1,output_dim=1,
 
 
 # CONSTANTS 
-Xa = -3
-Xb = 3
+Xa = -5
+Xb = 1
+H0 = 1
 
 #BOUNDARY CONDITIONS
 X_bound = np.array([Xa,Xb]) #normalisation, ici inutile car en 0
@@ -147,16 +152,20 @@ plt.plot(losses)
 plt.yscale('log')
 plt.xlabel("Epochs")
 plt.ylabel("Loss")
-name = "loss_lr" + str(lr) 
+name = "loss_lr" + str(lr) +".png"
+plt.savefig(name)
 
+
+#Résolution différence finie
 
 
 #FIGURE FOR INFERENCE RESULT
 plt.figure()
 
 plt.plot(X, P_pred,label = "Network prediction ")
+
 plt.legend()
 plt.ylabel('Pressure')
 plt.xlabel('X')
-file_name = f"OUTPUT_Reynolds_{str(activation)}_{n_hidden_layers}hidden_{n_hidden_layers}n_nodes_per_layer_{loss_regularisation_weight}regu_{loss_differential_equation_wheight}residual_{loss_boundary_weight}boudary_{loss_P_weight}loss_P_weight_{epochs}epoch_{lr}lr_{n_collocation_points}collocation.png"
+file_name = f"OUTPUT_{str(activation)}_{n_hidden_layers}hidden_{n_hidden_layers}n_nodes_per_layer_{loss_regularisation_weight}regu_{loss_differential_equation_wheight}residual_{loss_boundary_weight}boudary_{loss_P_weight}loss_P_weight_{epochs}epoch_{lr}lr_{n_collocation_points}collocation.png"
 plt.savefig(file_name)
