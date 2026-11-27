@@ -1,5 +1,5 @@
-from package.PINNS_creation import Pinns
-from package.PINNS_fourrier_embedding_creation import Pinns_Fourier
+from pinns_creation.PINNS_creation import Pinns
+from pinns_creation.PINNS_fourrier_embedding_creation import Pinns_Fourier
 import functools
 import matplotlib.pyplot as plt
 import numpy as np

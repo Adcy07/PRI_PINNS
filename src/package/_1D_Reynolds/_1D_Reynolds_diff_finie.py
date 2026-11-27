@@ -28,7 +28,7 @@ def system_creation(x, H0):
 
     return A, b
 
-def solve_iterative(x, H0, eps=1e-10, maxit=1_000_000):
+def solve_iterative(x, H0, eps=1e-9, maxit=1_000_00):
     """
     Schéma itératif avec correction de complémentarité :
         r^(k)      = b - A p^(k)
@@ -75,7 +75,7 @@ def residual(x, P, H0):
     lhs = (flux[1:] - flux[:-1]) / h
     return np.max(np.abs(lhs - x[1:-1]))
 
-x_diff = np.linspace(-5, 1, 400)
+x_diff = np.linspace(-5, 1, 100)
 H0 = 1
 
 P_main = solve_iterative(x_diff, H0) 

@@ -1,4 +1,6 @@
-from package.PINNS_Reynolds import Pinns_Reynolds
+
+from pinns_creation.PINNS_Reynolds_C import Pinns_Reynolds_Charge
+from package._1D_Reynolds._1D_Reynolds_diff_finie import solve_iterative
 
 import functools
 import matplotlib.pyplot as plt
@@ -7,6 +9,9 @@ import torch
 from pathlib import Path
 from torch import nn
 
+#SEED TO ENSURE ITS REPRODUCTIBLE
+torch.manual_seed(0)
+
 #IF THE COMPUTER HAS A GPU
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -14,16 +19,17 @@ DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 dossier = Path("outputs/graphs")
 
 #HYPERPARAMETERS
-n_hidden_layers = 3
-loss_regularisation_weight = 1
-loss_differential_equation_wheight = 20
+n_hidden_layers = 5
+loss_regularisation_weight = 0
+loss_differential_equation_weight = 200
 loss_boundary_weight = 100
-loss_P_weight = 200
-n_nodes_per_layer = 150
+loss_P_weight = 300
+loss_integral_weight = 10
+n_nodes_per_layer = 15
 activation = nn.Tanh()
 
 #TRAINING PARAMETERS
-epochs = 800
+epochs =    5000
 lr = 1e-3
 
 #LOSS FUNCTIONS
@@ -38,7 +44,7 @@ def loss_regularisation_function(model: nn.Module):
 
 
 def H_function(model,X): #the fluid's height (adimensionalised)
-    global H0 
+    H0 = model.H0 
     H = H0 + (X**2)/2
 
     return H
@@ -56,7 +62,7 @@ def loss_negative_pressure(model, X):
     return loss
 
 
-def physics_loss_function_cooling_1D(model, X):
+def physics_loss_function(model, X):
     P = model(X)
 
     H = H_function(model,X)
@@ -88,22 +94,35 @@ def boundary_condition_loss_function(model, boundary_conditions, boundary_condit
 
     return loss
 
+def loss_integral_function(model, X):
+
+    charge = 10
+    P = model(X)
+    delta_X = X[:len(X)-1]-X[1:len(X)]
+    Pk = P[:len(P)-1]
+    Pk_plus_1 = P[1:len(P)]
+    trapezoid_surface = delta_X(Pk + (Pk_plus_1-Pk)/2)
+    residual = torch.sum(trapezoid_surface)/charge
+
+    return residual
+
 #def analytical_solution_1D()
 
 
-loss_residual = physics_loss_function_cooling_1D
+loss_residual = physics_loss_function
 loss_regularisation = loss_regularisation_function 
 loss_boundary = boundary_condition_loss_function
 loss_P_penalization_function = loss_negative_pressure
+loss_integral = loss_integral_function
 
 #NETWORK CREATION
 #NETWORK CREATION
-pinn = Pinns_Reynolds(input_dim=1,output_dim=1,
+pinn = Pinns_Reynolds_Charge(input_dim=1,output_dim=1,
                           n_hidden_layers=n_hidden_layers,
                           loss_residual_DE=loss_residual,
                           loss_regularisation= loss_regularisation,
                           loss_regularisation_weight=loss_regularisation_weight,
-                          loss_residual_DE_weight=loss_differential_equation_wheight,
+                          loss_residual_DE_weight=loss_differential_equation_weight,
                           loss_boundary_weight= loss_boundary_weight,
                           n_nodes_per_layer=n_nodes_per_layer,
                           epochs=epochs,
@@ -111,7 +130,10 @@ pinn = Pinns_Reynolds(input_dim=1,output_dim=1,
                           loss_boundary = loss_boundary,
                           activation_hidden_layer=activation,
                           loss_P_penalization = loss_P_penalization_function,
-                          loss_P_weight = loss_P_weight
+                          loss_P_weight = loss_P_weight,
+                          loss_intergral= loss_integral,
+                          loss_integral_weight= loss_integral_weight
+                          
                           )
 
 
@@ -120,12 +142,12 @@ pinn = Pinns_Reynolds(input_dim=1,output_dim=1,
 
 # CONSTANTS 
 Xa = -5
-Xb = 1
+Xb = 5
 H0 = 1
 
 #BOUNDARY CONDITIONS
-X_bound = np.array([Xa,Xb]) #normalisation, ici inutile car en 0
-P_bound = np.array([0,0]) #normalisation
+X_bound = np.array([Xa,Xb]) 
+P_bound = np.array([0,0]) 
 boundary_conditions = X_bound,P_bound
 
 X_bound_deriv = np.array([])#normalisation, ici inutile car en 0
@@ -134,38 +156,46 @@ boundary_conditions_derivatives = X_bound_deriv,P_bound_deriv
 
 
 #COLLOCATION POINTS
-n_collocation_points = 1000
-X_collocation = (Xb*torch.rand(n_collocation_points)).view(-1,1).requires_grad_(True).to(DEVICE)
+#rajouter seed 
 
+n_collocation_points = 30
+X_collocation = (Xa+(Xb-Xa)*torch.rand(n_collocation_points)).view(-1,1).requires_grad_(True).to(DEVICE)
+
+#VISUALIZATION
+visualization = np.linspace(Xa,Xb,100)
 
 #TRAINING AND COMPUTING THE LOSS
-losses = pinn.fit(boundary_conditions,boundary_conditions_derivatives,X_collocation) 
+if __name__ == "__main__": #on fait l'entrainement que si on le veut vraiment
+    losses = pinn.fit(boundary_conditions,boundary_conditions_derivatives,X_collocation,visualization) 
+
+#SAUVEGARDE DES POIDS DU MODELE
+PATH = "current_best_model"
+torch.save(pinn.state_dict(), PATH)
+
+#FINITE DIFFERENCE 
+x = np.linspace(Xa, Xb, 100)
+H0 = 1
+P_diff = solve_iterative(x, H0) 
+
 
 #INFERENCE
-N_point_inference = 100 
-X = np.linspace(Xa,Xb,N_point_inference)
-P_pred = pinn.predict(X)    # entrée normalisée
-print(P_pred.size)
-#FIGURE FOR LOSSSES
-plt.figure()
-plt.plot(losses)
-plt.yscale('log')
-plt.xlabel("Epochs")
-plt.ylabel("Loss")
-name = "loss_lr" + str(lr) +".png"
-plt.savefig(name)
 
+P_net = pinn.predict(x)    # entrée normalisée
 
-#Résolution différence finie
+print(f"H0 = {pinn.H0.item()}")
 
 
 #FIGURE FOR INFERENCE RESULT
 plt.figure()
 
-plt.plot(X, P_pred,label = "Network prediction ")
+plt.plot(x, P_net,label = "Network prediction ")
+plt.plot(x,P_diff,label = "Finite differences")
 
 plt.legend()
 plt.ylabel('Pressure')
 plt.xlabel('X')
-file_name = f"OUTPUT_{str(activation)}_{n_hidden_layers}hidden_{n_hidden_layers}n_nodes_per_layer_{loss_regularisation_weight}regu_{loss_differential_equation_wheight}residual_{loss_boundary_weight}boudary_{loss_P_weight}loss_P_weight_{epochs}epoch_{lr}lr_{n_collocation_points}collocation.png"
+file_name = f"OUTPUT_{str(activation)}_{n_hidden_layers}hidden_{n_nodes_per_layer}n_nodes_per_layer_{loss_regularisation_weight}regu_{loss_differential_equation_weight}residual_{loss_boundary_weight}boudary_{loss_P_weight}loss_P_weight_{epochs}epoch_{lr}lr_{n_collocation_points}collocation.png"
 plt.savefig(file_name)
+
+
+

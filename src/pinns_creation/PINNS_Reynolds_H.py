@@ -2,6 +2,8 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 import torch.utils.data as thdat
+import matplotlib.pyplot as plt
+
 
 
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -29,8 +31,7 @@ class Pinns_Reynolds(nn.Module): #un réseau hérite toujours de nn.Module
         loss_boundary_weight, #weight for the boudary loss
         loss_boundary,  #loss sur les conditions aux limites   
         loss_P_penalization, #penalisation de la pression négative 
-        loss_P_weight
-        
+        loss_P_weight        
     ) -> None:
         
         super().__init__()
@@ -73,7 +74,7 @@ class Pinns_Reynolds(nn.Module): #un réseau hérite toujours de nn.Module
 
         return out #retourne juste une inférence
 
-    def fit(self,bourdary_conditions,bourdary_conditions_first_derivative,collocation):
+    def fit(self,bourdary_conditions,bourdary_conditions_first_derivative,collocation,visualization):
 
         optimiser = optim.Adam(self.parameters(), lr=self.lr) #on initialise une instance de l'optimiseur
         self.train() #met le model en "mode train", active des options importantes
@@ -91,6 +92,16 @@ class Pinns_Reynolds(nn.Module): #un réseau hérite toujours de nn.Module
             losses.append(loss.item()) #on ajoute la loss de cette epoch
             if ep % int(self.epochs / 10) == 0:
                 print(f"Epoch {ep}/{self.epochs}, loss: {losses[-1]:.2f}") #tout les 10 epoch on donne des infos dans le terminal
+
+            if ep % int(self.epochs / 5) == 0:
+                 pred = self.predict(visualization)
+                 plt.title("Evolution solution")
+                 plt.plot(visualization,pred, label = f"Epoch = {ep}")
+                 plt.legend()
+
+            plt.savefig("Evolution solution")
+
+                 
         print("entrainement fini")
         return losses
 
